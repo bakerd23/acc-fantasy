@@ -1,0 +1,197 @@
+.teams-page {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.teams-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.teams-header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.week-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #666;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.week-select select {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  color: #333;
+}
+
+.past-week-notice {
+  background: #fff3cd;
+  color: #856404;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.team-section {
+  margin-bottom: 32px;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.team-section h3 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 1.3rem;
+}
+
+.roster-table-container {
+  overflow-x: auto;
+}
+
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.roster-table thead {
+  background: #f8f9fa;
+}
+
+.roster-table th {
+  padding: 10px 8px;
+  text-align: center;
+  font-weight: 700;
+  color: #666;
+  border-bottom: 2px solid #e0e0e0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.roster-table th.name-col {
+  text-align: left;
+  min-width: 180px;
+}
+
+.roster-table td {
+  padding: 10px 8px;
+  text-align: center;
+  border-bottom: 1px solid #f0f0f0;
+  color: #333;
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-table tbody tr {
+  transition: all 0.2s;
+  background: white;
+}
+
+.roster-table tbody tr.clickable {
+  cursor: pointer;
+}
+
+.roster-table tbody tr.clickable:hover {
+  background: #f5f7ff;
+  transform: scale(1.01);
+}
+
+.roster-table tbody tr.selected {
+  background: #e3f2fd;
+  box-shadow: inset 0 0 0 2px #667eea;
+}
+
+.roster-table tbody tr.swap-target {
+  background: #e8f5e9;
+  cursor: pointer;
+}
+
+.roster-table tbody tr.swap-target:hover {
+  background: #c8e6c9;
+}
+
+.roster-table tbody tr.past-week {
+  opacity: 0.75;
+  background: #fafafa;
+}
+
+.roster-table tbody tr.has-played {
+  opacity: 0.7;
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.roster-table tbody tr.needs-ir-move {
+  background: #ffebee;
+}
+
+.roster-table tbody tr.needs-ir-move .name-cell {
+  color: #d32f2f;
+  font-weight: 700;
+}
+
+.pos-cell {
+  font-weight: 700;
+  color: #667eea;
+  text-align: left !important;
+  padding-left: 12px !important;
+}
+
+.name-cell {
+  text-align: left !important;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.fpts-cell {
+  font-weight: 700;
+  color: #2e7d32;
+}
+
+.state {
+  color: #666;
+  padding: 16px;
+}
+
+.state.error {
+  color: #b00020;
+}
+
+.error-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.team-section h3 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.team-record {
+  font-size: 1rem;
+  color: #666;
+  font-weight: 500;
+}

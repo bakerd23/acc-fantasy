@@ -1,0 +1,158 @@
+.matchups-page {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.matchups-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.matchups-header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.week-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #666;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.week-select select {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  color: #333;
+}
+
+.matchup-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.matchup-top {
+  display: grid;
+  grid-template-columns: 1fr 200px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.team-name {
+  font-weight: 800;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.team-name.right {
+  text-align: right;
+}
+
+.team-name.winner {
+  color: #2e7d32;
+}
+
+.subline {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #666;
+  margin-top: 4px;
+}
+
+.subline.right {
+  text-align: right;
+}
+
+.score {
+  text-align: center;
+  font-weight: 800;
+  color: #666;
+  font-size: 1.3rem;
+}
+
+.slot-header,
+.slot-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 40px 70px 70px 40px 1fr 50px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.slot-header {
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+  margin-top: 8px;
+  color: #666;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.slot-row {
+  border-top: 1px solid #f3f3f3;
+  font-size: 0.9rem;
+}
+
+.pos {
+  color: #666;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.player {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #333;
+}
+
+.player.left {
+  text-align: left;
+}
+
+.player.right {
+  text-align: right;
+}
+
+.gp {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.pts {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #333;
+}
+
+.state {
+  color: #666;
+  padding: 16px;
+}
+
+.state.error {
+  color: #b00020;
+}
+
+.error-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.8;
+}

@@ -26,7 +26,7 @@ export default function Matchups() {
 
   const [teamsById, setTeamsById] = useState({});
   const [playersById, setPlayersById] = useState({});
-  const [playerWeek, setPlayerWeek] = useState({}); // { [playerId]: { pts, gp } }
+  const [playerWeek, setPlayerWeek] = useState({}); // { [playerId]: { pts, gp, reb, ast, stl, blk, to } }
   const [gamesByNcaateamWeek, setGamesByNcaateamWeek] = useState({}); // { [teamIdNum]: scheduledCount }
   const [matchups, setMatchups] = useState([]);
 
@@ -89,9 +89,8 @@ export default function Matchups() {
     };
   }, []);
 
-  // Show weeks 1 through 10 (or currentWeek+1 if we want to show next week too)
   const weekOptions = useMemo(() => {
-    const maxWeek = 10; // Total weeks in season
+    const maxWeek = 10;
     return Array.from({ length: maxWeek }, (_, i) => i + 1);
   }, []);
 
@@ -104,7 +103,7 @@ export default function Matchups() {
           getDocs(query(collection(db, "matchups"), where("week", "==", selectedWeek))),
           getDocs(query(collection(db, "weeklyStats"), where("week", "==", selectedWeek))),
           getDocs(query(collection(db, "games"), where("week", "==", selectedWeek))),
-          getDocs(collection(db, "teams")), // refresh rosters so IR is correct
+          getDocs(collection(db, "teams")),
         ]);
 
         const tmap = {};
@@ -132,9 +131,15 @@ export default function Matchups() {
           const v = d.data() || {};
           const pid = String(v.playerId || "");
           if (!pid) return;
-          const pts = Number(v.totalFantasyPoints) || 0;
-          const gp = Number(v.gamesPlayed) || 0; // FIX: use gamesPlayed directly
-          pw[pid] = { pts, gp };
+          pw[pid] = {
+            pts: Number(v.totalFantasyPoints) || 0,
+            gp: Number(v.gamesPlayed) || 0,
+            reb: Number(v.totalRebounds) || 0,
+            ast: Number(v.totalAssists) || 0,
+            stl: Number(v.totalSteals) || 0,
+            blk: Number(v.totalBlocks) || 0,
+            to: Number(v.totalTurnovers) || 0,
+          };
         });
         setPlayerWeek(pw);
 
@@ -162,16 +167,10 @@ export default function Matchups() {
     return playersById[key]?.name || key;
   };
 
-  const getPlayerGP = (pid) => {
-    if (!pid) return 0;
+  const getPlayerStats = (pid) => {
+    if (!pid) return null;
     const key = String(pid);
-    return Number(playerWeek[key]?.gp) || 0;
-  };
-
-  const getPlayerPts = (pid) => {
-    if (!pid) return 0;
-    const key = String(pid);
-    return Number(playerWeek[key]?.pts) || 0;
+    return playerWeek[key] || null;
   };
 
   const getPlayerNcaateamId = (pid) => {
@@ -181,24 +180,26 @@ export default function Matchups() {
     return typeof t === "number" ? t : null;
   };
 
+  const getPlayerGamesRemaining = (pid) => {
+    if (!pid) return 0;
+    const ncaateam = getPlayerNcaateamId(pid);
+    if (ncaateam == null) return 0;
+    
+    const sched = Number(gamesByNcaateamWeek[ncaateam]) || 0;
+    const stats = getPlayerStats(pid);
+    const gp = stats?.gp || 0;
+    return Math.max(0, sched - gp);
+  };
+
   const teamGamesRemaining = (rosterMap) => {
     const r = rosterMap || {};
     let rem = 0;
-
-    // Only count starting lineup (G1, G2, F1, F2, FC)
     const startingSlots = ["G1", "G2", "F1", "F2", "FC"];
 
     startingSlots.forEach((slot) => {
       const pid = r[slot];
       if (!pid) return;
-
-      const ncaateam = getPlayerNcaateamId(pid);
-      if (ncaateam == null) return;
-
-      const sched = Number(gamesByNcaateamWeek[ncaateam]) || 0;
-      const gp = getPlayerGP(pid);
-      const left = Math.max(0, sched - gp);
-      rem += left;
+      rem += getPlayerGamesRemaining(pid);
     });
 
     return rem;
@@ -277,10 +278,14 @@ export default function Matchups() {
               <div className="slot-header">
                 <div className="pos">POS</div>
                 <div className="player left">PLAYER</div>
+                <div className="gr">GR</div>
                 <div className="gp">GP</div>
+                <div className="stats">STATS</div>
                 <div className="pts">PTS</div>
                 <div className="pts">PTS</div>
+                <div className="stats">STATS</div>
                 <div className="gp">GP</div>
+                <div className="gr">GR</div>
                 <div className="player right">PLAYER</div>
                 <div className="pos">POS</div>
               </div>
@@ -289,14 +294,28 @@ export default function Matchups() {
                 const lp = leftRoster[slot];
                 const rp = rightRoster[slot];
 
+                const lstats = getPlayerStats(lp);
+                const rstats = getPlayerStats(rp);
+
+                const lStatLine = lstats 
+                  ? `${lstats.reb}R ${lstats.ast}A ${lstats.stl}S ${lstats.blk}B ${lstats.to}TO`
+                  : "—";
+                const rStatLine = rstats 
+                  ? `${rstats.reb}R ${rstats.ast}A ${rstats.stl}S ${rstats.blk}B ${rstats.to}TO`
+                  : "—";
+
                 return (
                   <div className="slot-row" key={`${m.matchupId || "m"}_${slot}`}>
                     <div className="pos">{slot}</div>
                     <div className="player left">{getPlayerName(lp)}</div>
-                    <div className="gp">{getPlayerGP(lp)}</div>
-                    <div className="pts">{fmtPts(getPlayerPts(lp))}</div>
-                    <div className="pts">{fmtPts(getPlayerPts(rp))}</div>
-                    <div className="gp">{getPlayerGP(rp)}</div>
+                    <div className="gr">{getPlayerGamesRemaining(lp)}</div>
+                    <div className="gp">{lstats?.gp || 0}</div>
+                    <div className="stats left">{lStatLine}</div>
+                    <div className="pts">{fmtPts(lstats?.pts || 0)}</div>
+                    <div className="pts">{fmtPts(rstats?.pts || 0)}</div>
+                    <div className="stats right">{rStatLine}</div>
+                    <div className="gp">{rstats?.gp || 0}</div>
+                    <div className="gr">{getPlayerGamesRemaining(rp)}</div>
                     <div className="player right">{getPlayerName(rp)}</div>
                     <div className="pos">{slot}</div>
                   </div>

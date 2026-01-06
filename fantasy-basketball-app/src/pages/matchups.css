@@ -3,7 +3,7 @@
   border-radius: 12px;
   padding: 2rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -87,7 +87,7 @@
 .slot-header,
 .slot-row {
   display: grid;
-  grid-template-columns: 50px 1fr 40px 70px 70px 40px 1fr 50px;
+  grid-template-columns: 50px 1fr 30px 30px 120px 70px 70px 120px 30px 30px 1fr 50px;
   gap: 8px;
   align-items: center;
   padding: 6px 0;
@@ -128,11 +128,34 @@
   text-align: right;
 }
 
+.gr {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #2e7d32;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
 .gp {
   text-align: center;
   font-variant-numeric: tabular-nums;
   color: #666;
   font-size: 0.85rem;
+}
+
+.stats {
+  font-size: 0.75rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stats.left {
+  text-align: left;
+}
+
+.stats.right {
+  text-align: right;
 }
 
 .pts {

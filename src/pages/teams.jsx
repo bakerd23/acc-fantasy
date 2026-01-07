@@ -194,9 +194,8 @@ export default function Teams() {
 
   const canMoveToIR = (pid) => {
     const stats = getPlayerStats(pid);
-    // If no stats this week, allow IR (player didn't play)
-    if (!stats) return true;
-    // If they played but scored 0, allow IR
+    // Must have played this week AND scored exactly 0 fantasy points
+    if (!stats || stats.gamesPlayed === 0) return false;
     return stats.lastGamePoints === 0;
   };
 

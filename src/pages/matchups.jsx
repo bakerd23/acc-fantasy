@@ -17,6 +17,11 @@ function fmtPts(x) {
   return n.toFixed(2);
 }
 
+function fmtStat(x) {
+  const n = Number(x) || 0;
+  return n.toFixed(1);
+}
+
 export default function Matchups() {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
@@ -26,7 +31,7 @@ export default function Matchups() {
 
   const [teamsById, setTeamsById] = useState({});
   const [playersById, setPlayersById] = useState({});
-  const [playerWeek, setPlayerWeek] = useState({}); // { [playerId]: { pts, gp, reb, ast, stl, blk, to } }
+  const [playerWeek, setPlayerWeek] = useState({}); // { [playerId]: { pts, gp, reb, ast, stl, blk, to, fgPct, tpm, fouls } }
   const [gamesByNcaateamWeek, setGamesByNcaateamWeek] = useState({}); // { [teamIdNum]: scheduledCount }
   const [matchups, setMatchups] = useState([]);
 
@@ -131,14 +136,23 @@ export default function Matchups() {
           const v = d.data() || {};
           const pid = String(v.playerId || "");
           if (!pid) return;
+          
+          const fgMade = Number(v.fieldGoalsMade) || 0;
+          const fgAttempted = Number(v.fieldGoalsAttempted) || 0;
+          const fgPct = fgAttempted > 0 ? ((fgMade / fgAttempted) * 100).toFixed(1) : "0.0";
+          
           pw[pid] = {
             pts: Number(v.totalFantasyPoints) || 0,
             gp: Number(v.gamesPlayed) || 0,
+            points: Number(v.totalPoints) || 0,
             reb: Number(v.totalRebounds) || 0,
             ast: Number(v.totalAssists) || 0,
             stl: Number(v.totalSteals) || 0,
             blk: Number(v.totalBlocks) || 0,
             to: Number(v.totalTurnovers) || 0,
+            fouls: Number(v.totalFouls) || 0,
+            tpm: Number(v.threePointsMade) || 0,
+            fgPct: fgPct,
           };
         });
         setPlayerWeek(pw);
@@ -298,10 +312,10 @@ export default function Matchups() {
                 const rstats = getPlayerStats(rp);
 
                 const lStatLine = lstats 
-                  ? `${lstats.reb}R ${lstats.ast}A ${lstats.stl}S ${lstats.blk}B ${lstats.to}TO`
+                  ? `${fmtStat(lstats.points)}P ${fmtStat(lstats.reb)}R ${fmtStat(lstats.ast)}A ${fmtStat(lstats.stl)}S ${fmtStat(lstats.blk)}B ${lstats.fgPct}% ${fmtStat(lstats.tpm)}3 ${fmtStat(lstats.fouls)}F ${fmtStat(lstats.to)}T`
                   : "—";
                 const rStatLine = rstats 
-                  ? `${rstats.reb}R ${rstats.ast}A ${rstats.stl}S ${rstats.blk}B ${rstats.to}TO`
+                  ? `${fmtStat(rstats.points)}P ${fmtStat(rstats.reb)}R ${fmtStat(rstats.ast)}A ${fmtStat(rstats.stl)}S ${fmtStat(rstats.blk)}B ${rstats.fgPct}% ${fmtStat(rstats.tpm)}3 ${fmtStat(rstats.fouls)}F ${fmtStat(rstats.to)}T`
                   : "—";
 
                 return (

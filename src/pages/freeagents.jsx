@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from "react";
-import { collection, getDocs, doc, updateDoc, addDoc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import "./freeagents.css";
 
@@ -7,19 +7,16 @@ export default function FreeAgents() {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
 
-  const [teams, setTeams] = useState([]);
-  const [players, setPlayers] = useState([]);
-  const [weeklyStats, setWeeklyStats] = useState({});
+  const [currentWeek, setCurrentWeek] = useState(1);
+  const [selectedWeek, setSelectedWeek] = useState(1);
 
-  const [positionFilter, setPositionFilter] = useState("All");
-  const [sortBy, setSortBy] = useState("ppg");
-  const [sortDir, setSortDir] = useState("desc");
+  const [allPlayers, setAllPlayers] = useState([]);
+  const [playerWeekStats, setPlayerWeekStats] = useState({});
 
-  const [showModal, setShowModal] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [selectedTeam, setSelectedTeam] = useState("");
-  const [playerToDrop, setPlayerToDrop] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [positionFilter, setPositionFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState("name");
+  const [sortOrder, setSortOrder] = useState("asc");
 
   useEffect(() => {
     let alive = true;
@@ -29,80 +26,39 @@ export default function FreeAgents() {
       setError("");
 
       try {
-        const [teamsSnap, playersSnap, statsSnap] = await Promise.all([
+        const [leagueSnap, teamsSnap, playersSnap] = await Promise.all([
+          getDoc(doc(db, "league", "main")),
           getDocs(collection(db, "teams")),
           getDocs(collection(db, "players")),
-          getDocs(collection(db, "weeklyStats")),
         ]);
 
-        const teamsList = teamsSnap.docs
-          .map((d) => {
-            const v = d.data() || {};
-            return {
-              id: d.id,
-              teamId: v.teamId || d.id,
-              name: v.teamName || v.owner || d.id,
-              roster: v.roster || {},
-            };
-          })
-          .sort((a, b) => a.name.localeCompare(b.name));
+        const cw = Number(leagueSnap.data()?.currentWeek) || 1;
+
+        // Build set of rostered player IDs
+        const rosteredIds = new Set();
+        teamsSnap.docs.forEach((d) => {
+          const roster = d.data()?.roster || {};
+          Object.values(roster).forEach((pid) => {
+            if (pid) rosteredIds.add(String(pid));
+          });
+        });
 
         const playersList = playersSnap.docs.map((d) => {
           const v = d.data() || {};
+          const pid = String(v.playerId || d.id);
           return {
-            id: d.id,
-            playerId: String(v.playerId || d.id),
-            name: v.name || "Unknown",
+            playerId: pid,
+            name: v.name || pid,
             position: v.position || "?",
-            ncaaTeamId: v.teamId ?? null,
-            status: v.status || "free_agent",
-            fantasyTeam: v.fantasyTeam || null,
+            teamId: v.teamId ?? null,
+            isRostered: rosteredIds.has(pid),
           };
         });
 
-        // Aggregate all weekly stats for each player
-        const statsMap = {};
-        statsSnap.docs.forEach((d) => {
-          const v = d.data() || {};
-          const pid = String(v.playerId || "");
-          if (!pid) return;
-
-          if (!statsMap[pid]) {
-            statsMap[pid] = {
-              totalGames: 0,
-              totalPoints: 0,
-              totalRebounds: 0,
-              totalAssists: 0,
-              totalSteals: 0,
-              totalBlocks: 0,
-              totalTurnovers: 0,
-              totalFouls: 0,
-              totalFGM: 0,
-              totalFGA: 0,
-              total3PM: 0,
-              totalFantasyPoints: 0,
-            };
-          }
-
-          const s = v.aggregatedStats || {};
-          statsMap[pid].totalGames += Number(v.gamesPlayed) || 0;
-          statsMap[pid].totalPoints += Number(s.points) || 0;
-          statsMap[pid].totalRebounds += Number(s.rebounds) || 0;
-          statsMap[pid].totalAssists += Number(s.assists) || 0;
-          statsMap[pid].totalSteals += Number(s.steals) || 0;
-          statsMap[pid].totalBlocks += Number(s.blocks) || 0;
-          statsMap[pid].totalTurnovers += Number(s.turnovers) || 0;
-          statsMap[pid].totalFouls += Number(s.fouls) || 0;
-          statsMap[pid].totalFGM += Number(s.fieldGoalsMade) || 0;
-          statsMap[pid].totalFGA += Number(s.fieldGoalsAttempted) || 0;
-          statsMap[pid].total3PM += Number(s.threePointFieldGoalsMade) || 0;
-          statsMap[pid].totalFantasyPoints += Number(v.totalFantasyPoints) || 0;
-        });
-
         if (!alive) return;
-        setTeams(teamsList);
-        setPlayers(playersList);
-        setWeeklyStats(statsMap);
+        setCurrentWeek(cw);
+        setSelectedWeek(cw);
+        setAllPlayers(playersList);
         setStatus("success");
       } catch (e) {
         if (!alive) return;
@@ -117,239 +73,126 @@ export default function FreeAgents() {
     };
   }, []);
 
+  const weekOptions = useMemo(() => {
+    const n = Math.max(1, currentWeek);
+    return Array.from({ length: n }, (_, i) => i + 1);
+  }, [currentWeek]);
+
+  useEffect(() => {
+    if (status !== "success") return;
+
+    const run = async () => {
+      try {
+        const statsSnap = await getDocs(
+          query(collection(db, "weeklyStats"), where("week", "==", selectedWeek))
+        );
+
+        const statsMap = {};
+        statsSnap.docs.forEach((d) => {
+          const v = d.data() || {};
+          const pid = String(v.playerId || "");
+          if (!pid) return;
+
+          if (!statsMap[pid]) {
+            statsMap[pid] = {
+              gamesPlayed: 0,
+              totalFantasyPoints: 0,
+              totalPoints: 0,
+              totalRebounds: 0,
+              totalAssists: 0,
+              totalSteals: 0,
+              totalBlocks: 0,
+              totalTurnovers: 0,
+              totalFouls: 0,
+              fieldGoalsMade: 0,
+              fieldGoalsAttempted: 0,
+              threePointsMade: 0,
+            };
+          }
+
+          statsMap[pid].gamesPlayed += Number(v.gamesPlayed) || 1;
+          statsMap[pid].totalFantasyPoints += Number(v.totalFantasyPoints) || 0;
+          statsMap[pid].totalPoints += Number(v.totalPoints) || 0;
+          statsMap[pid].totalRebounds += Number(v.totalRebounds) || 0;
+          statsMap[pid].totalAssists += Number(v.totalAssists) || 0;
+          statsMap[pid].totalSteals += Number(v.totalSteals) || 0;
+          statsMap[pid].totalBlocks += Number(v.totalBlocks) || 0;
+          statsMap[pid].totalTurnovers += Number(v.totalTurnovers) || 0;
+          statsMap[pid].totalFouls += Number(v.totalFouls) || 0;
+          statsMap[pid].fieldGoalsMade += Number(v.fieldGoalsMade) || 0;
+          statsMap[pid].fieldGoalsAttempted += Number(v.fieldGoalsAttempted) || 0;
+          statsMap[pid].threePointsMade += Number(v.threePointsMade) || 0;
+        });
+
+        setPlayerWeekStats(statsMap);
+      } catch (e) {
+        console.error("Error loading stats:", e);
+      }
+    };
+
+    run();
+  }, [selectedWeek, status]);
+
   const freeAgents = useMemo(() => {
-    return players.filter((p) => p.status === "free_agent");
-  }, [players]);
+    return allPlayers.filter((p) => !p.isRostered);
+  }, [allPlayers]);
 
   const filteredPlayers = useMemo(() => {
-    let filtered = freeAgents;
+    let result = freeAgents;
 
-    if (positionFilter !== "All") {
-      filtered = filtered.filter((p) => p.position === positionFilter);
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      result = result.filter((p) => p.name.toLowerCase().includes(lower));
     }
 
-    return filtered;
-  }, [freeAgents, positionFilter]);
+    if (positionFilter !== "ALL") {
+      result = result.filter((p) => p.position === positionFilter);
+    }
 
-  const sortedPlayers = useMemo(() => {
-    const sorted = [...filteredPlayers];
+    result = result.map((p) => {
+      const stats = playerWeekStats[p.playerId] || null;
+      return { ...p, stats };
+    });
 
-    sorted.sort((a, b) => {
-      const aStats = weeklyStats[a.playerId] || {};
-      const bStats = weeklyStats[b.playerId] || {};
-
-      const aGames = aStats.totalGames || 0;
-      const bGames = bStats.totalGames || 0;
-
-      let aVal, bVal;
+    result.sort((a, b) => {
+      let valA, valB;
 
       switch (sortBy) {
         case "name":
-          return sortDir === "asc"
-            ? a.name.localeCompare(b.name)
-            : b.name.localeCompare(a.name);
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+          break;
         case "position":
-          return sortDir === "asc"
-            ? a.position.localeCompare(b.position)
-            : b.position.localeCompare(a.position);
-        case "ppg":
-          aVal = aGames > 0 ? aStats.totalPoints / aGames : 0;
-          bVal = bGames > 0 ? bStats.totalPoints / bGames : 0;
+          valA = a.position;
+          valB = b.position;
           break;
-        case "rpg":
-          aVal = aGames > 0 ? aStats.totalRebounds / aGames : 0;
-          bVal = bGames > 0 ? bStats.totalRebounds / bGames : 0;
+        case "fpts":
+          valA = a.stats?.totalFantasyPoints || 0;
+          valB = b.stats?.totalFantasyPoints || 0;
           break;
-        case "apg":
-          aVal = aGames > 0 ? aStats.totalAssists / aGames : 0;
-          bVal = bGames > 0 ? bStats.totalAssists / bGames : 0;
-          break;
-        case "spg":
-          aVal = aGames > 0 ? aStats.totalSteals / aGames : 0;
-          bVal = bGames > 0 ? bStats.totalSteals / bGames : 0;
-          break;
-        case "bpg":
-          aVal = aGames > 0 ? aStats.totalBlocks / aGames : 0;
-          bVal = bGames > 0 ? bStats.totalBlocks / bGames : 0;
-          break;
-        case "fgpct":
-          aVal = aStats.totalFGA > 0 ? aStats.totalFGM / aStats.totalFGA : 0;
-          bVal = bStats.totalFGA > 0 ? bStats.totalFGM / bStats.totalFGA : 0;
-          break;
-        case "3pmpg":
-          aVal = aGames > 0 ? aStats.total3PM / aGames : 0;
-          bVal = bGames > 0 ? bStats.total3PM / bGames : 0;
-          break;
-        case "topg":
-          aVal = aGames > 0 ? aStats.totalTurnovers / aGames : 0;
-          bVal = bGames > 0 ? bStats.totalTurnovers / bGames : 0;
-          break;
-        case "fpg":
-          aVal = aGames > 0 ? aStats.totalFouls / aGames : 0;
-          bVal = bGames > 0 ? bStats.totalFouls / bGames : 0;
+        case "gp":
+          valA = a.stats?.gamesPlayed || 0;
+          valB = b.stats?.gamesPlayed || 0;
           break;
         default:
-          return 0;
+          valA = 0;
+          valB = 0;
       }
 
-      return sortDir === "asc" ? aVal - bVal : bVal - aVal;
+      if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+      if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+      return 0;
     });
 
-    return sorted;
-  }, [filteredPlayers, sortBy, sortDir, weeklyStats]);
+    return result;
+  }, [freeAgents, searchTerm, positionFilter, sortBy, sortOrder, playerWeekStats]);
 
-  const handleSort = (column) => {
-    if (sortBy === column) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
+  const handleSort = (key) => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
-      setSortBy(column);
-      setSortDir("desc");
-    }
-  };
-
-  const handleAddClick = (player) => {
-    setSelectedPlayer(player);
-    setSelectedTeam("");
-    setPlayerToDrop("");
-    setShowModal(true);
-  };
-
-  const handleAddPlayer = async () => {
-    if (!selectedTeam || !selectedPlayer) {
-      alert("Please select a team.");
-      return;
-    }
-
-    const team = teams.find((t) => t.teamId === selectedTeam);
-    if (!team) return;
-
-    const roster = team.roster || {};
-    const activeSlots = ["G1", "G2", "F1", "F2", "FC", "Bench"];
-    const activePlayers = activeSlots.filter((slot) => roster[slot]).length;
-
-    if (activePlayers >= 6 && !playerToDrop) {
-      alert("You must drop a player first.");
-      return;
-    }
-
-    if (activePlayers >= 6 && playerToDrop === "none") {
-      alert("You must drop a player first.");
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      // Find first empty slot
-      let emptySlot = null;
-      for (const slot of activeSlots) {
-        if (!roster[slot]) {
-          emptySlot = slot;
-          break;
-        }
-      }
-
-      // If dropping a player, find their slot
-      let dropSlot = null;
-      if (playerToDrop && playerToDrop !== "none") {
-        for (const slot of activeSlots) {
-          if (roster[slot] === playerToDrop) {
-            dropSlot = slot;
-            break;
-          }
-        }
-      }
-
-      const slotToUse = dropSlot || emptySlot;
-
-      if (!slotToUse) {
-        alert("No available roster spot.");
-        setSaving(false);
-        return;
-      }
-
-      // Update team roster
-      const newRoster = { ...roster };
-      newRoster[slotToUse] = selectedPlayer.playerId;
-
-      await updateDoc(doc(db, "teams", team.id), {
-        roster: newRoster,
-      });
-
-      // Update added player status
-      await updateDoc(doc(db, "players", selectedPlayer.id), {
-        status: "rostered",
-        fantasyTeam: selectedTeam,
-        rosterSpot: slotToUse,
-      });
-
-      // Update dropped player status and get name (if any)
-      let droppedPlayerName = null;
-      if (playerToDrop && playerToDrop !== "none") {
-        const droppedPlayer = players.find((p) => p.playerId === playerToDrop);
-        if (droppedPlayer) {
-          droppedPlayerName = droppedPlayer.name;
-          await updateDoc(doc(db, "players", droppedPlayer.id), {
-            status: "free_agent",
-            fantasyTeam: null,
-            rosterSpot: null,
-          });
-        }
-      }
-
-      // Log transaction
-      await addDoc(collection(db, "transactions"), {
-        type: "add",
-        teamId: selectedTeam,
-        teamName: team.name,
-        playerAdded: selectedPlayer.name,
-        playerAddedId: selectedPlayer.playerId,
-        playerDropped: droppedPlayerName,
-        playerDroppedId: playerToDrop && playerToDrop !== "none" ? playerToDrop : null,
-        timestamp: new Date(),
-      });
-
-      // Refresh data
-      const [teamsSnap, playersSnap] = await Promise.all([
-        getDocs(collection(db, "teams")),
-        getDocs(collection(db, "players")),
-      ]);
-
-      const teamsList = teamsSnap.docs
-        .map((d) => {
-          const v = d.data() || {};
-          return {
-            id: d.id,
-            teamId: v.teamId || d.id,
-            name: v.teamName || v.owner || d.id,
-            roster: v.roster || {},
-          };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      const playersList = playersSnap.docs.map((d) => {
-        const v = d.data() || {};
-        return {
-          id: d.id,
-          playerId: String(v.playerId || d.id),
-          name: v.name || "Unknown",
-          position: v.position || "?",
-          ncaaTeamId: v.teamId ?? null,
-          status: v.status || "free_agent",
-          fantasyTeam: v.fantasyTeam || null,
-        };
-      });
-
-      setTeams(teamsList);
-      setPlayers(playersList);
-      setShowModal(false);
-      setSelectedPlayer(null);
-      setSelectedTeam("");
-      setPlayerToDrop("");
-    } catch (e) {
-      alert("Error adding player: " + e.message);
-    } finally {
-      setSaving(false);
+      setSortBy(key);
+      setSortOrder("desc");
     }
   };
 
@@ -362,47 +205,50 @@ export default function FreeAgents() {
     return (made / attempted).toFixed(3);
   };
 
-  const getDroppablePlayers = () => {
-    if (!selectedTeam) return [];
-
-    const team = teams.find((t) => t.teamId === selectedTeam);
-    if (!team) return [];
-
-    const roster = team.roster || {};
-    const activeSlots = ["G1", "G2", "F1", "F2", "FC", "Bench"];
-
-    return activeSlots
-      .map((slot) => {
-        const pid = roster[slot];
-        if (!pid) return null;
-        const player = players.find((p) => p.playerId === pid);
-        return player ? { ...player, slot } : null;
-      })
-      .filter(Boolean);
+  const hasPlayedThisWeek = (playerId) => {
+    const stats = playerWeekStats[playerId];
+    return stats && stats.gamesPlayed > 0;
   };
-
-  const droppablePlayers = getDroppablePlayers();
-  const needsToDrop = selectedTeam && droppablePlayers.length >= 6;
 
   return (
     <div className="free-agents-page">
-      <div className="fa-header">
+      <div className="free-agents-header">
         <h2>Free Agents</h2>
 
-        <div className="fa-filters">
-          <label>
-            Position:
-            <select
-              value={positionFilter}
-              onChange={(e) => setPositionFilter(e.target.value)}
-            >
-              <option value="All">All</option>
-              <option value="G">G</option>
-              <option value="F">F</option>
-              <option value="C">C</option>
-            </select>
-          </label>
+        <div className="week-select">
+          <span>Week</span>
+          <select
+            value={selectedWeek}
+            onChange={(e) => setSelectedWeek(Number(e.target.value))}
+          >
+            {weekOptions.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
         </div>
+      </div>
+
+      <div className="filters">
+        <input
+          type="text"
+          placeholder="Search players..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="search-input"
+        />
+
+        <select
+          value={positionFilter}
+          onChange={(e) => setPositionFilter(e.target.value)}
+          className="position-filter"
+        >
+          <option value="ALL">All Positions</option>
+          <option value="G">Guards</option>
+          <option value="F">Forwards</option>
+          <option value="C">Centers</option>
+        </select>
       </div>
 
       {status === "loading" && <div className="state">Loading…</div>}
@@ -415,152 +261,71 @@ export default function FreeAgents() {
       )}
 
       {status === "success" && (
-        <div className="fa-table-container">
-          <table className="fa-table">
+        <div className="table-container">
+          <table className="free-agents-table">
             <thead>
               <tr>
-                <th className="add-col"></th>
                 <th onClick={() => handleSort("name")} className="sortable">
-                  Name {sortBy === "name" && (sortDir === "asc" ? "▲" : "▼")}
+                  NAME {sortBy === "name" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
                 <th onClick={() => handleSort("position")} className="sortable">
-                  Pos {sortBy === "position" && (sortDir === "asc" ? "▲" : "▼")}
+                  POS {sortBy === "position" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("ppg")} className="sortable">
-                  PPG {sortBy === "ppg" && (sortDir === "asc" ? "▲" : "▼")}
+                <th>PTS</th>
+                <th>REB</th>
+                <th>AST</th>
+                <th>STL</th>
+                <th>BLK</th>
+                <th>FG%</th>
+                <th>3PM</th>
+                <th>TO</th>
+                <th>FOUL</th>
+                <th onClick={() => handleSort("fpts")} className="sortable">
+                  FPTS {sortBy === "fpts" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleSort("rpg")} className="sortable">
-                  RPG {sortBy === "rpg" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
-                <th onClick={() => handleSort("apg")} className="sortable">
-                  APG {sortBy === "apg" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
-                <th onClick={() => handleSort("spg")} className="sortable">
-                  SPG {sortBy === "spg" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
-                <th onClick={() => handleSort("bpg")} className="sortable">
-                  BPG {sortBy === "bpg" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
-                <th onClick={() => handleSort("fgpct")} className="sortable">
-                  FG% {sortBy === "fgpct" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
-                <th onClick={() => handleSort("3pmpg")} className="sortable">
-                  3PMPG {sortBy === "3pmpg" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
-                <th onClick={() => handleSort("topg")} className="sortable">
-                  TOPG {sortBy === "topg" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
-                <th onClick={() => handleSort("fpg")} className="sortable">
-                  FPG {sortBy === "fpg" && (sortDir === "asc" ? "▲" : "▼")}
+                <th onClick={() => handleSort("gp")} className="sortable">
+                  GP {sortBy === "gp" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
               </tr>
             </thead>
             <tbody>
-              {sortedPlayers.map((player) => {
-                const stats = weeklyStats[player.playerId] || {};
-                const gp = stats.totalGames || 0;
-
-                const ppg = gp > 0 ? stats.totalPoints / gp : 0;
-                const rpg = gp > 0 ? stats.totalRebounds / gp : 0;
-                const apg = gp > 0 ? stats.totalAssists / gp : 0;
-                const spg = gp > 0 ? stats.totalSteals / gp : 0;
-                const bpg = gp > 0 ? stats.totalBlocks / gp : 0;
-                const fgpct =
-                  stats.totalFGA > 0 ? stats.totalFGM / stats.totalFGA : 0;
-                const tpmpg = gp > 0 ? stats.total3PM / gp : 0;
-                const topg = gp > 0 ? stats.totalTurnovers / gp : 0;
-                const fpg = gp > 0 ? stats.totalFouls / gp : 0;
+              {filteredPlayers.map((player) => {
+                const stats = player.stats;
+                const hasPlayed = hasPlayedThisWeek(player.playerId);
 
                 return (
-                  <tr key={player.playerId}>
-                    <td className="add-col">
-                      <button
-                        className="add-btn"
-                        onClick={() => handleAddClick(player)}
-                        title="Add player"
-                      >
-                        +
-                      </button>
-                    </td>
+                  <tr 
+                    key={player.playerId}
+                    className={hasPlayed ? "has-played" : ""}
+                  >
                     <td className="name-cell">{player.name}</td>
-                    <td>{player.position}</td>
-                    <td>{formatStat(ppg)}</td>
-                    <td>{formatStat(rpg)}</td>
-                    <td>{formatStat(apg)}</td>
-                    <td>{formatStat(spg)}</td>
-                    <td>{formatStat(bpg)}</td>
-                    <td>{formatPct(stats.totalFGM, stats.totalFGA)}</td>
-                    <td>{formatStat(tpmpg)}</td>
-                    <td>{formatStat(topg)}</td>
-                    <td>{formatStat(fpg)}</td>
+                    <td className="pos-cell">{player.position}</td>
+                    <td>{stats ? formatStat(stats.totalPoints) : "—"}</td>
+                    <td>{stats ? formatStat(stats.totalRebounds) : "—"}</td>
+                    <td>{stats ? formatStat(stats.totalAssists) : "—"}</td>
+                    <td>{stats ? formatStat(stats.totalSteals) : "—"}</td>
+                    <td>{stats ? formatStat(stats.totalBlocks) : "—"}</td>
+                    <td>
+                      {stats
+                        ? formatPct(stats.fieldGoalsMade, stats.fieldGoalsAttempted)
+                        : "—"}
+                    </td>
+                    <td>{stats ? formatStat(stats.threePointsMade) : "—"}</td>
+                    <td>{stats ? formatStat(stats.totalTurnovers) : "—"}</td>
+                    <td>{stats ? formatStat(stats.totalFouls) : "—"}</td>
+                    <td className="fpts-cell">
+                      {stats ? formatStat(stats.totalFantasyPoints) : "—"}
+                    </td>
+                    <td>{stats ? stats.gamesPlayed : "0"}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
-      )}
 
-      {showModal && selectedPlayer && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Add {selectedPlayer.name}</h3>
-
-            <div className="modal-field">
-              <label>Select Team:</label>
-              <select
-                value={selectedTeam}
-                onChange={(e) => {
-                  setSelectedTeam(e.target.value);
-                  setPlayerToDrop("");
-                }}
-              >
-                <option value="">-- Select Team --</option>
-                {teams.map((team) => (
-                  <option key={team.teamId} value={team.teamId}>
-                    {team.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {selectedTeam && (
-              <div className="modal-field">
-                <label>
-                  {needsToDrop ? "Drop Player:" : "Drop Player (optional):"}
-                </label>
-                <select
-                  value={playerToDrop}
-                  onChange={(e) => setPlayerToDrop(e.target.value)}
-                >
-                  <option value="">-- Select --</option>
-                  {!needsToDrop && <option value="none">Don't drop anyone</option>}
-                  {droppablePlayers.map((p) => (
-                    <option key={p.playerId} value={p.playerId}>
-                      {p.name} ({p.slot})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div className="modal-actions">
-              <button
-                className="btn-cancel"
-                onClick={() => setShowModal(false)}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-confirm"
-                onClick={handleAddPlayer}
-                disabled={saving || !selectedTeam || (needsToDrop && !playerToDrop)}
-              >
-                {saving ? "Adding..." : "Add Player"}
-              </button>
-            </div>
-          </div>
+          {filteredPlayers.length === 0 && (
+            <div className="no-results">No players found</div>
+          )}
         </div>
       )}
     </div>

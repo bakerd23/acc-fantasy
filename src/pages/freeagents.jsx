@@ -10,10 +10,10 @@ export default function FreeAgents() {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
-  const [playersById, setPlayersById] = useState({});
+  const [playersMap, setPlayersMap] = useState({});
   const [weeklyStats, setWeeklyStats] = useState({});
   const [currentWeekStats, setCurrentWeekStats] = useState({});
-  const [gamesByNcaateamWeek, setGamesByNcaateamWeek] = useState({});
+  const [gamesScheduled, setGamesScheduled] = useState({});
 
   const [positionFilter, setPositionFilter] = useState("All");
   const [sortBy, setSortBy] = useState("ppg");
@@ -33,10 +33,11 @@ export default function FreeAgents() {
       setError("");
 
       try {
+        // Get current week
         const leagueSnap = await getDoc(doc(db, "league", "main"));
         const cw = Number(leagueSnap.data()?.currentWeek) || 1;
 
-        const [teamsSnap, playersSnap, statsSnap, currentWeekSnap, gamesSnap] = await Promise.all([
+        const [teamsSnap, playersSnap, statsSnap, currentWeekStatsSnap, gamesSnap] = await Promise.all([
           getDocs(collection(db, "teams")),
           getDocs(collection(db, "players")),
           getDocs(collection(db, "weeklyStats")),
@@ -60,7 +61,7 @@ export default function FreeAgents() {
         const playersList = playersSnap.docs.map((d) => {
           const v = d.data() || {};
           const pid = String(v.playerId || d.id);
-          const player = {
+          const p = {
             id: d.id,
             playerId: pid,
             name: v.name || "Unknown",
@@ -69,11 +70,11 @@ export default function FreeAgents() {
             status: v.status || "free_agent",
             fantasyTeam: v.fantasyTeam || null,
           };
-          pmap[pid] = player;
-          return player;
+          pmap[pid] = p;
+          return p;
         });
 
-        // Aggregate all weekly stats for each player
+        // Aggregate all weekly stats for each player (season totals)
         const statsMap = {};
         statsSnap.docs.forEach((d) => {
           const v = d.data() || {};
@@ -111,9 +112,9 @@ export default function FreeAgents() {
           statsMap[pid].totalFantasyPoints += Number(v.totalFantasyPoints) || 0;
         });
 
-        // Track current week stats for graying out
+        // Current week stats (for graying out)
         const currentWeekMap = {};
-        currentWeekSnap.docs.forEach((d) => {
+        currentWeekStatsSnap.docs.forEach((d) => {
           const v = d.data() || {};
           const pid = String(v.playerId || "");
           if (!pid) return;
@@ -122,7 +123,7 @@ export default function FreeAgents() {
           };
         });
 
-        // Track scheduled games by NCAA team
+        // Games scheduled this week (for GR calculation)
         const scheduled = {};
         gamesSnap.docs.forEach((d) => {
           const g = d.data() || {};
@@ -136,10 +137,10 @@ export default function FreeAgents() {
         setCurrentWeek(cw);
         setTeams(teamsList);
         setPlayers(playersList);
-        setPlayersById(pmap);
+        setPlayersMap(pmap);
         setWeeklyStats(statsMap);
         setCurrentWeekStats(currentWeekMap);
-        setGamesByNcaateamWeek(scheduled);
+        setGamesScheduled(scheduled);
         setStatus("success");
       } catch (e) {
         if (!alive) return;
@@ -154,17 +155,20 @@ export default function FreeAgents() {
     };
   }, []);
 
-  const getPlayerGamesRemaining = (playerId) => {
-    const player = playersById[playerId];
-    if (!player) return 0;
-    
-    const ncaateam = player.ncaaTeamId;
-    if (ncaateam == null) return 0;
-    
-    const sched = Number(gamesByNcaateamWeek[ncaateam]) || 0;
+  const hasPlayedThisWeek = (playerId) => {
     const stats = currentWeekStats[playerId];
-    const gp = stats?.gamesPlayed || 0;
-    return Math.max(0, sched - gp);
+    return stats && stats.gamesPlayed > 0;
+  };
+
+  const getGamesRemaining = (playerId) => {
+    const player = playersMap[playerId];
+    if (!player || player.ncaaTeamId == null) return 0;
+    
+    const scheduled = gamesScheduled[player.ncaaTeamId] || 0;
+    const stats = currentWeekStats[playerId];
+    const played = stats?.gamesPlayed || 0;
+    
+    return Math.max(0, scheduled - played);
   };
 
   const freeAgents = useMemo(() => {
@@ -203,8 +207,8 @@ export default function FreeAgents() {
             ? a.position.localeCompare(b.position)
             : b.position.localeCompare(a.position);
         case "gr":
-          aVal = getPlayerGamesRemaining(a.playerId);
-          bVal = getPlayerGamesRemaining(b.playerId);
+          aVal = getGamesRemaining(a.playerId);
+          bVal = getGamesRemaining(b.playerId);
           break;
         case "ppg":
           aVal = aGames > 0 ? aStats.totalPoints / aGames : 0;
@@ -250,12 +254,7 @@ export default function FreeAgents() {
     });
 
     return sorted;
-  }, [filteredPlayers, sortBy, sortDir, weeklyStats, playersById, currentWeekStats, gamesByNcaateamWeek]);
-
-  const hasPlayedThisWeek = (playerId) => {
-    const stats = currentWeekStats[playerId];
-    return stats && stats.gamesPlayed > 0;
-  };
+  }, [filteredPlayers, sortBy, sortDir, weeklyStats, playersMap, currentWeekStats, gamesScheduled]);
 
   const handleSort = (column) => {
     if (sortBy === column) {
@@ -372,7 +371,7 @@ export default function FreeAgents() {
       const leagueSnap = await getDoc(doc(db, "league", "main"));
       const cw = Number(leagueSnap.data()?.currentWeek) || 1;
 
-      const [teamsSnap, playersSnap, currentWeekSnap, gamesSnap] = await Promise.all([
+      const [teamsSnap, playersSnap, currentWeekStatsSnap, gamesSnap] = await Promise.all([
         getDocs(collection(db, "teams")),
         getDocs(collection(db, "players")),
         getDocs(query(collection(db, "weeklyStats"), where("week", "==", cw))),
@@ -395,7 +394,7 @@ export default function FreeAgents() {
       const playersList = playersSnap.docs.map((d) => {
         const v = d.data() || {};
         const pid = String(v.playerId || d.id);
-        const player = {
+        const p = {
           id: d.id,
           playerId: pid,
           name: v.name || "Unknown",
@@ -404,12 +403,12 @@ export default function FreeAgents() {
           status: v.status || "free_agent",
           fantasyTeam: v.fantasyTeam || null,
         };
-        pmap[pid] = player;
-        return player;
+        pmap[pid] = p;
+        return p;
       });
 
       const currentWeekMap = {};
-      currentWeekSnap.docs.forEach((d) => {
+      currentWeekStatsSnap.docs.forEach((d) => {
         const v = d.data() || {};
         const pid = String(v.playerId || "");
         if (!pid) return;
@@ -429,9 +428,9 @@ export default function FreeAgents() {
 
       setTeams(teamsList);
       setPlayers(playersList);
-      setPlayersById(pmap);
+      setPlayersMap(pmap);
       setCurrentWeekStats(currentWeekMap);
-      setGamesByNcaateamWeek(scheduled);
+      setGamesScheduled(scheduled);
       setShowModal(false);
       setSelectedPlayer(null);
       setSelectedTeam("");
@@ -555,7 +554,7 @@ export default function FreeAgents() {
                 const stats = weeklyStats[player.playerId] || {};
                 const gp = stats.totalGames || 0;
                 const hasPlayed = hasPlayedThisWeek(player.playerId);
-                const gr = getPlayerGamesRemaining(player.playerId);
+                const gr = getGamesRemaining(player.playerId);
 
                 const ppg = gp > 0 ? stats.totalPoints / gp : 0;
                 const rpg = gp > 0 ? stats.totalRebounds / gp : 0;

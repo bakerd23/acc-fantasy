@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import './App.css';
 import Standings from './pages/Standings';
 import Matchups from './pages/Matchups';
@@ -18,7 +18,6 @@ function App() {
             <Link to="/free-agents">Free Agents</Link>
           </nav>
         </header>
-        
         <main className="main">
           <Routes>
             <Route path="/" element={<Standings />} />

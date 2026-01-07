@@ -9,7 +9,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import "./Teams.css";
+import "./teams.css";
 
 const STARTING_SLOTS = ["G1", "G2", "F1", "F2", "FC"];
 const ALL_SLOTS = ["G1", "G2", "F1", "F2", "FC", "Bench", "IR"];

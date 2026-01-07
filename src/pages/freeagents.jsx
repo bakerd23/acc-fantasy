@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import "./FreeAgents.css";
+import "./freeagents.css";
 
 export default function FreeAgents() {
   const [status, setStatus] = useState("loading");

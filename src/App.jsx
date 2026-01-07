@@ -1,9 +1,9 @@
 import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import './App.css';
-import Standings from './pages/Standings';
-import Matchups from './pages/Matchups';
-import Teams from './pages/Teams';
-import FreeAgents from './pages/FreeAgents';
+import Standings from './pages/standings';      // Changed: Standings -> standings
+import Matchups from './pages/matchups';        // Changed: Matchups -> matchups
+import Teams from './pages/teams';              // Changed: Teams -> teams
+import FreeAgents from './pages/freeagents';    // Changed: FreeAgents -> freeagents
 
 function App() {
   return (

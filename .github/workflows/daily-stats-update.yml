@@ -1,0 +1,43 @@
+name: Daily Stats Update
+
+on:
+  schedule:
+    # Runs at 5 AM EST (10 AM UTC) every day
+    - cron: '0 10 * * *'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  update-stats:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.0'
+      
+      - name: Install R dependencies
+        run: |
+          R -e "install.packages(c('hoopR', 'tidyverse', 'jsonlite'), repos='https://cloud.r-project.org')"
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install Node dependencies
+        run: npm ci
+      
+      - name: Create service account key file
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > serviceAccountKey.json
+      
+      - name: Run daily stats script
+        run: |
+          node scripts/daily-update.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

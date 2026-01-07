@@ -312,10 +312,10 @@ export default function Matchups() {
                 const rstats = getPlayerStats(rp);
 
                 const lStatLine = lstats 
-                  ? `${fmtStat(lstats.points)}P ${fmtStat(lstats.reb)}R ${fmtStat(lstats.ast)}A ${fmtStat(lstats.stl)}S ${fmtStat(lstats.blk)}B ${lstats.fgPct}% ${fmtStat(lstats.tpm)}3 ${fmtStat(lstats.fouls)}F ${fmtStat(lstats.to)}T`
+                  ? `${Math.round(lstats.points)}P ${Math.round(lstats.reb)}R ${Math.round(lstats.ast)}A ${Math.round(lstats.stl)}S ${Math.round(lstats.blk)}B ${lstats.fgPct}% ${Math.round(lstats.tpm)}3 ${Math.round(lstats.fouls)}F ${Math.round(lstats.to)}T`
                   : "—";
                 const rStatLine = rstats 
-                  ? `${fmtStat(rstats.points)}P ${fmtStat(rstats.reb)}R ${fmtStat(rstats.ast)}A ${fmtStat(rstats.stl)}S ${fmtStat(rstats.blk)}B ${rstats.fgPct}% ${fmtStat(rstats.tpm)}3 ${fmtStat(rstats.fouls)}F ${fmtStat(rstats.to)}T`
+                  ? `${Math.round(rstats.points)}P ${Math.round(rstats.reb)}R ${Math.round(rstats.ast)}A ${Math.round(rstats.stl)}S ${Math.round(rstats.blk)}B ${rstats.fgPct}% ${Math.round(rstats.tpm)}3 ${Math.round(rstats.fouls)}F ${Math.round(rstats.to)}T`
                   : "—";
 
                 return (

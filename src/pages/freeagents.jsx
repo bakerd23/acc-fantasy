@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { collection, getDocs, doc, updateDoc, addDoc, query, where, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, addDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import "./freeagents.css";
 
@@ -7,13 +7,9 @@ export default function FreeAgents() {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
 
-  const [currentWeek, setCurrentWeek] = useState(1);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
-  const [playersMap, setPlayersMap] = useState({});
   const [weeklyStats, setWeeklyStats] = useState({});
-  const [currentWeekStats, setCurrentWeekStats] = useState({});
-  const [gamesScheduled, setGamesScheduled] = useState({});
 
   const [positionFilter, setPositionFilter] = useState("All");
   const [sortBy, setSortBy] = useState("ppg");
@@ -33,16 +29,10 @@ export default function FreeAgents() {
       setError("");
 
       try {
-        // Get current week
-        const leagueSnap = await getDoc(doc(db, "league", "main"));
-        const cw = Number(leagueSnap.data()?.currentWeek) || 1;
-
-        const [teamsSnap, playersSnap, statsSnap, currentWeekStatsSnap, gamesSnap] = await Promise.all([
+        const [teamsSnap, playersSnap, statsSnap] = await Promise.all([
           getDocs(collection(db, "teams")),
           getDocs(collection(db, "players")),
           getDocs(collection(db, "weeklyStats")),
-          getDocs(query(collection(db, "weeklyStats"), where("week", "==", cw))),
-          getDocs(query(collection(db, "games"), where("week", "==", cw))),
         ]);
 
         const teamsList = teamsSnap.docs
@@ -57,24 +47,20 @@ export default function FreeAgents() {
           })
           .sort((a, b) => a.name.localeCompare(b.name));
 
-        const pmap = {};
         const playersList = playersSnap.docs.map((d) => {
           const v = d.data() || {};
-          const pid = String(v.playerId || d.id);
-          const p = {
+          return {
             id: d.id,
-            playerId: pid,
+            playerId: String(v.playerId || d.id),
             name: v.name || "Unknown",
             position: v.position || "?",
             ncaaTeamId: v.teamId ?? null,
             status: v.status || "free_agent",
             fantasyTeam: v.fantasyTeam || null,
           };
-          pmap[pid] = p;
-          return p;
         });
 
-        // Aggregate all weekly stats for each player (season totals)
+        // Aggregate all weekly stats for each player
         const statsMap = {};
         statsSnap.docs.forEach((d) => {
           const v = d.data() || {};
@@ -98,49 +84,25 @@ export default function FreeAgents() {
             };
           }
 
+          const s = v.aggregatedStats || {};
           statsMap[pid].totalGames += Number(v.gamesPlayed) || 0;
-          statsMap[pid].totalPoints += Number(v.totalPoints) || 0;
-          statsMap[pid].totalRebounds += Number(v.totalRebounds) || 0;
-          statsMap[pid].totalAssists += Number(v.totalAssists) || 0;
-          statsMap[pid].totalSteals += Number(v.totalSteals) || 0;
-          statsMap[pid].totalBlocks += Number(v.totalBlocks) || 0;
-          statsMap[pid].totalTurnovers += Number(v.totalTurnovers) || 0;
-          statsMap[pid].totalFouls += Number(v.totalFouls) || 0;
-          statsMap[pid].totalFGM += Number(v.fieldGoalsMade) || 0;
-          statsMap[pid].totalFGA += Number(v.fieldGoalsAttempted) || 0;
-          statsMap[pid].total3PM += Number(v.threePointsMade) || 0;
+          statsMap[pid].totalPoints += Number(s.points) || 0;
+          statsMap[pid].totalRebounds += Number(s.rebounds) || 0;
+          statsMap[pid].totalAssists += Number(s.assists) || 0;
+          statsMap[pid].totalSteals += Number(s.steals) || 0;
+          statsMap[pid].totalBlocks += Number(s.blocks) || 0;
+          statsMap[pid].totalTurnovers += Number(s.turnovers) || 0;
+          statsMap[pid].totalFouls += Number(s.fouls) || 0;
+          statsMap[pid].totalFGM += Number(s.fieldGoalsMade) || 0;
+          statsMap[pid].totalFGA += Number(s.fieldGoalsAttempted) || 0;
+          statsMap[pid].total3PM += Number(s.threePointFieldGoalsMade) || 0;
           statsMap[pid].totalFantasyPoints += Number(v.totalFantasyPoints) || 0;
         });
 
-        // Current week stats (for graying out)
-        const currentWeekMap = {};
-        currentWeekStatsSnap.docs.forEach((d) => {
-          const v = d.data() || {};
-          const pid = String(v.playerId || "");
-          if (!pid) return;
-          currentWeekMap[pid] = {
-            gamesPlayed: Number(v.gamesPlayed) || 0,
-          };
-        });
-
-        // Games scheduled this week (for GR calculation)
-        const scheduled = {};
-        gamesSnap.docs.forEach((d) => {
-          const g = d.data() || {};
-          const h = g.homeTeamId;
-          const a = g.awayTeamId;
-          if (typeof h === "number") scheduled[h] = (scheduled[h] || 0) + 1;
-          if (typeof a === "number") scheduled[a] = (scheduled[a] || 0) + 1;
-        });
-
         if (!alive) return;
-        setCurrentWeek(cw);
         setTeams(teamsList);
         setPlayers(playersList);
-        setPlayersMap(pmap);
         setWeeklyStats(statsMap);
-        setCurrentWeekStats(currentWeekMap);
-        setGamesScheduled(scheduled);
         setStatus("success");
       } catch (e) {
         if (!alive) return;
@@ -154,22 +116,6 @@ export default function FreeAgents() {
       alive = false;
     };
   }, []);
-
-  const hasPlayedThisWeek = (playerId) => {
-    const stats = currentWeekStats[playerId];
-    return stats && stats.gamesPlayed > 0;
-  };
-
-  const getGamesRemaining = (playerId) => {
-    const player = playersMap[playerId];
-    if (!player || player.ncaaTeamId == null) return 0;
-    
-    const scheduled = gamesScheduled[player.ncaaTeamId] || 0;
-    const stats = currentWeekStats[playerId];
-    const played = stats?.gamesPlayed || 0;
-    
-    return Math.max(0, scheduled - played);
-  };
 
   const freeAgents = useMemo(() => {
     return players.filter((p) => p.status === "free_agent");
@@ -206,10 +152,6 @@ export default function FreeAgents() {
           return sortDir === "asc"
             ? a.position.localeCompare(b.position)
             : b.position.localeCompare(a.position);
-        case "gr":
-          aVal = getGamesRemaining(a.playerId);
-          bVal = getGamesRemaining(b.playerId);
-          break;
         case "ppg":
           aVal = aGames > 0 ? aStats.totalPoints / aGames : 0;
           bVal = bGames > 0 ? bStats.totalPoints / bGames : 0;
@@ -254,7 +196,7 @@ export default function FreeAgents() {
     });
 
     return sorted;
-  }, [filteredPlayers, sortBy, sortDir, weeklyStats, playersMap, currentWeekStats, gamesScheduled]);
+  }, [filteredPlayers, sortBy, sortDir, weeklyStats]);
 
   const handleSort = (column) => {
     if (sortBy === column) {
@@ -368,14 +310,9 @@ export default function FreeAgents() {
       });
 
       // Refresh data
-      const leagueSnap = await getDoc(doc(db, "league", "main"));
-      const cw = Number(leagueSnap.data()?.currentWeek) || 1;
-
-      const [teamsSnap, playersSnap, currentWeekStatsSnap, gamesSnap] = await Promise.all([
+      const [teamsSnap, playersSnap] = await Promise.all([
         getDocs(collection(db, "teams")),
         getDocs(collection(db, "players")),
-        getDocs(query(collection(db, "weeklyStats"), where("week", "==", cw))),
-        getDocs(query(collection(db, "games"), where("week", "==", cw))),
       ]);
 
       const teamsList = teamsSnap.docs
@@ -390,47 +327,21 @@ export default function FreeAgents() {
         })
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      const pmap = {};
       const playersList = playersSnap.docs.map((d) => {
         const v = d.data() || {};
-        const pid = String(v.playerId || d.id);
-        const p = {
+        return {
           id: d.id,
-          playerId: pid,
+          playerId: String(v.playerId || d.id),
           name: v.name || "Unknown",
           position: v.position || "?",
           ncaaTeamId: v.teamId ?? null,
           status: v.status || "free_agent",
           fantasyTeam: v.fantasyTeam || null,
         };
-        pmap[pid] = p;
-        return p;
-      });
-
-      const currentWeekMap = {};
-      currentWeekStatsSnap.docs.forEach((d) => {
-        const v = d.data() || {};
-        const pid = String(v.playerId || "");
-        if (!pid) return;
-        currentWeekMap[pid] = {
-          gamesPlayed: Number(v.gamesPlayed) || 0,
-        };
-      });
-
-      const scheduled = {};
-      gamesSnap.docs.forEach((d) => {
-        const g = d.data() || {};
-        const h = g.homeTeamId;
-        const a = g.awayTeamId;
-        if (typeof h === "number") scheduled[h] = (scheduled[h] || 0) + 1;
-        if (typeof a === "number") scheduled[a] = (scheduled[a] || 0) + 1;
       });
 
       setTeams(teamsList);
       setPlayers(playersList);
-      setPlayersMap(pmap);
-      setCurrentWeekStats(currentWeekMap);
-      setGamesScheduled(scheduled);
       setShowModal(false);
       setSelectedPlayer(null);
       setSelectedTeam("");
@@ -465,8 +376,6 @@ export default function FreeAgents() {
         const pid = roster[slot];
         if (!pid) return null;
         const player = players.find((p) => p.playerId === pid);
-        // Don't allow dropping players who have already played this week
-        if (player && hasPlayedThisWeek(pid)) return null;
         return player ? { ...player, slot } : null;
       })
       .filter(Boolean);
@@ -517,9 +426,6 @@ export default function FreeAgents() {
                 <th onClick={() => handleSort("position")} className="sortable">
                   Pos {sortBy === "position" && (sortDir === "asc" ? "▲" : "▼")}
                 </th>
-                <th onClick={() => handleSort("gr")} className="sortable">
-                  GR {sortBy === "gr" && (sortDir === "asc" ? "▲" : "▼")}
-                </th>
                 <th onClick={() => handleSort("ppg")} className="sortable">
                   PPG {sortBy === "ppg" && (sortDir === "asc" ? "▲" : "▼")}
                 </th>
@@ -553,8 +459,6 @@ export default function FreeAgents() {
               {sortedPlayers.map((player) => {
                 const stats = weeklyStats[player.playerId] || {};
                 const gp = stats.totalGames || 0;
-                const hasPlayed = hasPlayedThisWeek(player.playerId);
-                const gr = getGamesRemaining(player.playerId);
 
                 const ppg = gp > 0 ? stats.totalPoints / gp : 0;
                 const rpg = gp > 0 ? stats.totalRebounds / gp : 0;
@@ -568,7 +472,7 @@ export default function FreeAgents() {
                 const fpg = gp > 0 ? stats.totalFouls / gp : 0;
 
                 return (
-                  <tr key={player.playerId} className={hasPlayed ? "has-played" : ""}>
+                  <tr key={player.playerId}>
                     <td className="add-col">
                       <button
                         className="add-btn"
@@ -580,7 +484,6 @@ export default function FreeAgents() {
                     </td>
                     <td className="name-cell">{player.name}</td>
                     <td>{player.position}</td>
-                    <td>{gr}</td>
                     <td>{formatStat(ppg)}</td>
                     <td>{formatStat(rpg)}</td>
                     <td>{formatStat(apg)}</td>
@@ -638,11 +541,6 @@ export default function FreeAgents() {
                     </option>
                   ))}
                 </select>
-                {selectedTeam && droppablePlayers.length === 0 && (
-                  <div style={{color: '#d32f2f', fontSize: '0.9rem', marginTop: '0.5rem'}}>
-                    All players have already played this week and cannot be dropped
-                  </div>
-                )}
               </div>
             )}
 

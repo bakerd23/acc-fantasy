@@ -126,8 +126,9 @@ export default function Teams() {
 
     const run = async () => {
       try {
+        // Query weeklyStats collection for the selected week
         const statsSnap = await getDocs(
-          query(collection(db, "gameStats"), where("week", "==", selectedWeek))
+          query(collection(db, "weeklyStats"), where("week", "==", selectedWeek))
         );
 
         const statsMap = {};
@@ -141,36 +142,33 @@ export default function Teams() {
               gamesPlayed: 0,
               lastGamePoints: 0,
               totalFantasyPoints: 0,
-              stats: {
-                points: 0,
-                rebounds: 0,
-                assists: 0,
-                steals: 0,
-                blocks: 0,
-                turnovers: 0,
-                fouls: 0,
-                fieldGoalsMade: 0,
-                fieldGoalsAttempted: 0,
-                threePointFieldGoalsMade: 0,
-              },
+              totalPoints: 0,
+              totalRebounds: 0,
+              totalAssists: 0,
+              totalSteals: 0,
+              totalBlocks: 0,
+              totalTurnovers: 0,
+              totalFouls: 0,
+              fieldGoalsMade: 0,
+              fieldGoalsAttempted: 0,
+              threePointsMade: 0,
             };
           }
 
-          statsMap[pid].gamesPlayed += 1;
-          statsMap[pid].lastGamePoints = Number(v.fantasyPoints) || 0;
-          statsMap[pid].totalFantasyPoints += Number(v.fantasyPoints) || 0;
-
-          const s = v.stats || {};
-          statsMap[pid].stats.points += Number(s.points) || 0;
-          statsMap[pid].stats.rebounds += Number(s.rebounds) || 0;
-          statsMap[pid].stats.assists += Number(s.assists) || 0;
-          statsMap[pid].stats.steals += Number(s.steals) || 0;
-          statsMap[pid].stats.blocks += Number(s.blocks) || 0;
-          statsMap[pid].stats.turnovers += Number(s.turnovers) || 0;
-          statsMap[pid].stats.fouls += Number(s.fouls) || 0;
-          statsMap[pid].stats.fieldGoalsMade += Number(s.fieldGoalsMade) || 0;
-          statsMap[pid].stats.fieldGoalsAttempted += Number(s.fieldGoalsAttempted) || 0;
-          statsMap[pid].stats.threePointFieldGoalsMade += Number(s.threePointFieldGoalsMade) || 0;
+          // Accumulate stats from this game
+          statsMap[pid].gamesPlayed += Number(v.gamesPlayed) || 1;
+          statsMap[pid].lastGamePoints = Number(v.totalFantasyPoints) || 0;
+          statsMap[pid].totalFantasyPoints += Number(v.totalFantasyPoints) || 0;
+          statsMap[pid].totalPoints += Number(v.totalPoints) || 0;
+          statsMap[pid].totalRebounds += Number(v.totalRebounds) || 0;
+          statsMap[pid].totalAssists += Number(v.totalAssists) || 0;
+          statsMap[pid].totalSteals += Number(v.totalSteals) || 0;
+          statsMap[pid].totalBlocks += Number(v.totalBlocks) || 0;
+          statsMap[pid].totalTurnovers += Number(v.totalTurnovers) || 0;
+          statsMap[pid].totalFouls += Number(v.totalFouls) || 0;
+          statsMap[pid].fieldGoalsMade += Number(v.fieldGoalsMade) || 0;
+          statsMap[pid].fieldGoalsAttempted += Number(v.fieldGoalsAttempted) || 0;
+          statsMap[pid].threePointsMade += Number(v.threePointsMade) || 0;
         });
 
         setPlayerWeekStats(statsMap);
@@ -474,19 +472,19 @@ export default function Teams() {
                           <td className="name-cell">
                             {player ? player.name : "—"}
                           </td>
-                          <td>{stats ? formatStat(stats.stats.points) : "—"}</td>
-                          <td>{stats ? formatStat(stats.stats.rebounds) : "—"}</td>
-                          <td>{stats ? formatStat(stats.stats.assists) : "—"}</td>
-                          <td>{stats ? formatStat(stats.stats.steals) : "—"}</td>
-                          <td>{stats ? formatStat(stats.stats.blocks) : "—"}</td>
+                          <td>{stats ? formatStat(stats.totalPoints) : "—"}</td>
+                          <td>{stats ? formatStat(stats.totalRebounds) : "—"}</td>
+                          <td>{stats ? formatStat(stats.totalAssists) : "—"}</td>
+                          <td>{stats ? formatStat(stats.totalSteals) : "—"}</td>
+                          <td>{stats ? formatStat(stats.totalBlocks) : "—"}</td>
                           <td>
                             {stats
-                              ? formatPct(stats.stats.fieldGoalsMade, stats.stats.fieldGoalsAttempted)
+                              ? formatPct(stats.fieldGoalsMade, stats.fieldGoalsAttempted)
                               : "—"}
                           </td>
-                          <td>{stats ? formatStat(stats.stats.threePointFieldGoalsMade) : "—"}</td>
-                          <td>{stats ? formatStat(stats.stats.turnovers) : "—"}</td>
-                          <td>{stats ? formatStat(stats.stats.fouls) : "—"}</td>
+                          <td>{stats ? formatStat(stats.threePointsMade) : "—"}</td>
+                          <td>{stats ? formatStat(stats.totalTurnovers) : "—"}</td>
+                          <td>{stats ? formatStat(stats.totalFouls) : "—"}</td>
                           <td className="fpts-cell">
                             {stats ? formatStat(stats.totalFantasyPoints) : "—"}
                           </td>

@@ -27,10 +27,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
       
-      - name: Install Node dependencies
-        run: npm ci
+      - name: Install firebase-admin
+        run: npm install firebase-admin
       
       - name: Create service account key file
         run: |

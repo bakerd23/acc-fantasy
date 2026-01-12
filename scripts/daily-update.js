@@ -13,52 +13,35 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// Get yesterday's date in YYYYMMDD format
-function getYesterdayDate() {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  const year = yesterday.getFullYear();
-  const month = String(yesterday.getMonth() + 1).padStart(2, '0');
-  const day = String(yesterday.getDate()).padStart(2, '0');
-  
-  return `${year}${month}${day}`;
-}
-
-// Get game IDs from Firebase for yesterday
-async function getYesterdayGames() {
-  const yesterdayDate = getYesterdayDate();
-  console.log(`\nChecking for games from ${yesterdayDate}...\n`);
+// Check which games need stats
+async function getGamesNeedingStats() {
+  console.log('\nChecking for games needing stats...\n');
   
   // Get current week
   const leagueDoc = await db.collection('league').doc('main').get();
   const currentWeek = leagueDoc.data()?.currentWeek || 1;
+  
+  console.log(`Current week: ${currentWeek}`);
   
   // Get all games for current week
   const gamesSnapshot = await db.collection('games')
     .where('week', '==', currentWeek)
     .get();
   
-  const yesterdayGames = [];
+  console.log(`Total games scheduled for Week ${currentWeek}: ${gamesSnapshot.size}`);
   
+  const allGameIds = [];
   gamesSnapshot.forEach(doc => {
-    const game = doc.data();
-    // Check if game date matches yesterday (you'll need to format this based on your date storage)
-    // For now, we'll get all games and filter by checking if stats exist
-    yesterdayGames.push(game.gameId);
+    allGameIds.push(doc.data().gameId);
   });
   
-  return { games: yesterdayGames, week: currentWeek };
-}
-
-// Check which games don't have stats yet
-async function getGamesWithoutStats(gameIds, week) {
+  // Check which games don't have stats yet
   const gamesNeedingStats = [];
   
-  for (const gameId of gameIds) {
+  for (const gameId of allGameIds) {
     const statsSnapshot = await db.collection('weeklyStats')
       .where('gameId', '==', String(gameId))
-      .where('week', '==', week)
+      .where('week', '==', currentWeek)
       .limit(1)
       .get();
     
@@ -67,7 +50,7 @@ async function getGamesWithoutStats(gameIds, week) {
     }
   }
   
-  return gamesNeedingStats;
+  return { games: gamesNeedingStats, week: currentWeek, totalGames: allGameIds.length };
 }
 
 // Create R script to scrape games
@@ -365,29 +348,20 @@ async function main() {
     console.log('DAILY STATS UPDATE');
     console.log('='.repeat(60));
     
-    // Get yesterday's games
-    const { games, week } = await getYesterdayGames();
+    // Get games needing stats
+    const { games, week, totalGames } = await getGamesNeedingStats();
     
     if (games.length === 0) {
-      console.log('No games scheduled for yesterday\n');
-      await checkAndAdvanceWeek();
-      return;
-    }
-    
-    // Check which games need stats
-    const gamesNeedingStats = await getGamesWithoutStats(games, week);
-    
-    if (gamesNeedingStats.length === 0) {
       console.log('All games already have stats uploaded\n');
       await checkAndAdvanceWeek();
       return;
     }
     
-    console.log(`Found ${gamesNeedingStats.length} games needing stats`);
-    console.log('Game IDs:', gamesNeedingStats.join(', '), '\n');
+    console.log(`Found ${games.length} games needing stats out of ${totalGames} total`);
+    console.log('Game IDs:', games.join(', '), '\n');
     
     // Create and run R scrape script
-    createScrapeScript(gamesNeedingStats, week);
+    createScrapeScript(games, week);
     
     console.log('Running R scrape script...\n');
     execSync('Rscript scrape_daily.R', { stdio: 'inherit' });

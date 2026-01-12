@@ -137,23 +137,44 @@ export default function Matchups() {
           const pid = String(v.playerId || "");
           if (!pid) return;
           
-          const fgMade = Number(v.fieldGoalsMade) || 0;
-          const fgAttempted = Number(v.fieldGoalsAttempted) || 0;
-          const fgPct = fgAttempted > 0 ? ((fgMade / fgAttempted) * 100).toFixed(1) : "0.0";
+          // Initialize if doesn't exist
+          if (!pw[pid]) {
+            pw[pid] = {
+              pts: 0,
+              gp: 0,
+              points: 0,
+              reb: 0,
+              ast: 0,
+              stl: 0,
+              blk: 0,
+              to: 0,
+              fouls: 0,
+              tpm: 0,
+              fgMade: 0,
+              fgAttempted: 0
+            };
+          }
           
-          pw[pid] = {
-            pts: Number(v.totalFantasyPoints) || 0,
-            gp: Number(v.gamesPlayed) || 0,
-            points: Number(v.totalPoints) || 0,
-            reb: Number(v.totalRebounds) || 0,
-            ast: Number(v.totalAssists) || 0,
-            stl: Number(v.totalSteals) || 0,
-            blk: Number(v.totalBlocks) || 0,
-            to: Number(v.totalTurnovers) || 0,
-            fouls: Number(v.totalFouls) || 0,
-            tpm: Number(v.threePointsMade) || 0,
-            fgPct: fgPct,
-          };
+          // ACCUMULATE stats
+          pw[pid].pts += Number(v.totalFantasyPoints) || 0;
+          pw[pid].gp += Number(v.gamesPlayed) || 0;
+          pw[pid].points += Number(v.totalPoints) || 0;
+          pw[pid].reb += Number(v.totalRebounds) || 0;
+          pw[pid].ast += Number(v.totalAssists) || 0;
+          pw[pid].stl += Number(v.totalSteals) || 0;
+          pw[pid].blk += Number(v.totalBlocks) || 0;
+          pw[pid].to += Number(v.totalTurnovers) || 0;
+          pw[pid].fouls += Number(v.totalFouls) || 0;
+          pw[pid].tpm += Number(v.threePointsMade) || 0;
+          pw[pid].fgMade += Number(v.fieldGoalsMade) || 0;
+          pw[pid].fgAttempted += Number(v.fieldGoalsAttempted) || 0;
+        });
+
+        // Calculate FG% after accumulation
+        Object.keys(pw).forEach(pid => {
+          const fgMade = pw[pid].fgMade;
+          const fgAttempted = pw[pid].fgAttempted;
+          pw[pid].fgPct = fgAttempted > 0 ? ((fgMade / fgAttempted) * 100).toFixed(1) : "0.0";
         });
         setPlayerWeek(pw);
 

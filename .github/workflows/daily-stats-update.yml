@@ -19,9 +19,13 @@ jobs:
         with:
           r-version: '4.3.0'
       
-      - name: Install R dependencies
-        run: |
-          R -e "install.packages(c('hoopR', 'tidyverse', 'jsonlite'), repos='https://cloud.r-project.org')"
+      - name: Setup R package cache
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::hoopR
+            any::tidyverse
+            any::jsonlite
       
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,5 +42,3 @@ jobs:
       - name: Run daily stats script
         run: |
           node scripts/daily-update.js
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

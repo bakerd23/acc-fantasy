@@ -155,20 +155,28 @@ export default function Matchups() {
             };
           }
           
-          // ACCUMULATE stats
-          pw[pid].pts += Number(v.totalFantasyPoints) || 0;
-          pw[pid].gp += Number(v.gamesPlayed) || 0;
-          pw[pid].points += Number(v.totalPoints) || 0;
-          pw[pid].reb += Number(v.totalRebounds) || 0;
-          pw[pid].ast += Number(v.totalAssists) || 0;
-          pw[pid].stl += Number(v.totalSteals) || 0;
-          pw[pid].blk += Number(v.totalBlocks) || 0;
-          pw[pid].to += Number(v.totalTurnovers) || 0;
-          pw[pid].fouls += Number(v.totalFouls) || 0;
-          pw[pid].tpm += Number(v.threePointsMade) || 0;
-          pw[pid].fgMade += Number(v.fieldGoalsMade) || 0;
-          pw[pid].fgAttempted += Number(v.fieldGoalsAttempted) || 0;
-        });
+          const aggStats = v.aggregatedStats || {};
+
+          // For new format (Week 2+), these fields exist directly
+          // For old format (Week 1), they're in aggregatedStats
+          const getStatValue = (newField, oldField) => {
+            if (v[newField] !== undefined) return Number(v[newField]);
+            if (aggStats[oldField] !== undefined) return Number(aggStats[oldField]);
+            return 0;
+          };
+
+          pw[pid].pts += getStatValue('totalFantasyPoints', 'N/A') || 0;
+          pw[pid].gp += getStatValue('gamesPlayed', 'N/A') || 0;
+          pw[pid].points += getStatValue('totalPoints', 'points');
+          pw[pid].reb += getStatValue('totalRebounds', 'rebounds');
+          pw[pid].ast += getStatValue('totalAssists', 'assists');
+          pw[pid].stl += getStatValue('totalSteals', 'steals');
+          pw[pid].blk += getStatValue('totalBlocks', 'blocks');
+          pw[pid].to += getStatValue('totalTurnovers', 'turnovers');
+          pw[pid].fouls += getStatValue('totalFouls', 'fouls');
+          pw[pid].tpm += getStatValue('threePointsMade', 'threePointFieldGoalsMade');
+          pw[pid].fgMade += getStatValue('fieldGoalsMade', 'fieldGoalsMade');
+          pw[pid].fgAttempted += getStatValue('fieldGoalsAttempted', 'fieldGoalsAttempted');
 
         // Calculate FG% after accumulation
         Object.keys(pw).forEach(pid => {

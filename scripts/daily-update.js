@@ -36,19 +36,22 @@ async function getGamesNeedingStats() {
   });
   
   // Check which games don't have stats yet
-  const gamesNeedingStats = [];
+  // We'll check if ANY stats exist for this week for these games
+  const statsSnapshot = await db.collection('weeklyStats')
+    .where('week', '==', currentWeek)
+    .get();
   
-  for (const gameId of allGameIds) {
-    const statsSnapshot = await db.collection('weeklyStats')
-      .where('gameId', '==', String(gameId))
-      .where('week', '==', currentWeek)
-      .limit(1)
-      .get();
-    
-    if (statsSnapshot.empty) {
-      gamesNeedingStats.push(gameId);
-    }
-  }
+  const gamesWithStats = new Set();
+  const statsData = JSON.parse(existsSync('daily_stats.json') ? readFileSync('daily_stats.json', 'utf8') : '{"stats":[]}');
+  
+  // Track which games we've already processed from previous runs
+  statsSnapshot.forEach(doc => {
+    // We can't directly know gameId, but if we have stats for this week, we've processed some games
+  });
+  
+  // For simplicity, we'll try to scrape all games and let R handle duplicates
+  // Or we can be smarter about it
+  const gamesNeedingStats = allGameIds; // Scrape all, R will handle it
   
   return { games: gamesNeedingStats, week: currentWeek, totalGames: allGameIds.length };
 }
@@ -224,6 +227,7 @@ async function uploadStats() {
   console.log(`✓ Successfully uploaded ${count} player weekly stats\n`);
   return true;
 }
+
 // Update matchup scores
 async function updateMatchupScores(week) {
   console.log(`Updating Week ${week} matchup scores...\n`);
@@ -287,47 +291,49 @@ async function updateMatchupScores(week) {
   console.log('✓ Matchup scores updated\n');
 }
 
-// Check if week is complete and advance if needed
+// Check if week should advance based on calendar
 async function checkAndAdvanceWeek() {
-  console.log('Checking if week is complete...\n');
+  console.log('Checking if week should advance...\n');
   
   const leagueDoc = await db.collection('league').doc('main').get();
-  const currentWeek = leagueDoc.data()?.currentWeek || 1;
+  const leagueData = leagueDoc.data();
+  const currentWeek = leagueData?.currentWeek || 1;
+  const seasonStartDate = leagueData?.seasonStartDate; // Expected format: "2025-01-13" (YYYY-MM-DD)
   
-  // Get all games for current week
-  const gamesSnapshot = await db.collection('games')
-    .where('week', '==', currentWeek)
-    .get();
-  
-  const totalGames = gamesSnapshot.size;
-  
-  // Check how many games have stats
-  let gamesWithStats = 0;
-  const gameIds = [];
-  
-  gamesSnapshot.forEach(doc => {
-    gameIds.push(doc.data().gameId);
-  });
-  
-  for (const gameId of gameIds) {
-    const statsSnapshot = await db.collection('weeklyStats')
-      .where('gameId', '==', String(gameId))
-      .where('week', '==', currentWeek)
-      .limit(1)
-      .get();
-    
-    if (!statsSnapshot.empty) {
-      gamesWithStats++;
-    }
+  if (!seasonStartDate) {
+    console.log('⚠️  No seasonStartDate found in league document. Cannot determine week advancement.');
+    console.log('Please add seasonStartDate to your league/main document in format YYYY-MM-DD\n');
+    return false;
   }
   
-  console.log(`Games with stats: ${gamesWithStats}/${totalGames}`);
+  // Get current date in EST
+  const now = new Date();
+  const estOffset = -5; // EST is UTC-5
+  const utcDate = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
+  const estDate = new Date(utcDate.getTime() + (estOffset * 3600000));
   
-  // If all games have stats, week is complete
-  if (gamesWithStats === totalGames && totalGames > 0) {
-    console.log('\n✓ Week is complete! Finalizing matchups and advancing...\n');
+  // Parse season start date
+  const seasonStart = new Date(seasonStartDate + 'T00:00:00-05:00'); // EST
+  
+  // Calculate days since season start
+  const daysSinceStart = Math.floor((estDate - seasonStart) / (1000 * 60 * 60 * 24));
+  
+  // Calculate expected week (weeks start on Monday, so we use 7-day periods)
+  const expectedWeek = Math.floor(daysSinceStart / 7) + 1;
+  
+  console.log(`Season started: ${seasonStartDate}`);
+  console.log(`Current date (EST): ${estDate.toISOString().split('T')[0]}`);
+  console.log(`Days since season start: ${daysSinceStart}`);
+  console.log(`Current week in DB: ${currentWeek}`);
+  console.log(`Expected week based on calendar: ${expectedWeek}`);
+  
+  if (expectedWeek > currentWeek) {
+    console.log('\n✓ New week has started! Finalizing previous week and advancing...\n');
     
-    // Finalize matchups - set winners
+    // Update matchup scores for the PREVIOUS week (the one that just ended)
+    await updateMatchupScores(currentWeek);
+    
+    // Finalize matchups for the previous week - set winners
     const matchupsSnapshot = await db.collection('matchups')
       .where('week', '==', currentWeek)
       .get();
@@ -339,26 +345,38 @@ async function checkAndAdvanceWeek() {
       const team1Points = matchup.team1Points || 0;
       const team2Points = matchup.team2Points || 0;
       
+      let winner = null;
+      if (team1Points > team2Points) {
+        winner = matchup.team1;
+      } else if (team2Points > team1Points) {
+        winner = matchup.team2;
+      }
+      // If tied, winner stays null
+      
       batch.update(doc.ref, {
         completed: true,
-        winner: team1Points > team2Points ? matchup.team1 : matchup.team2
+        winner: winner
       });
       
-      console.log(`  Finalized: ${matchup.team1} vs ${matchup.team2} - Winner: ${team1Points > team2Points ? matchup.team1 : matchup.team2}`);
+      console.log(`  Finalized: ${matchup.team1} (${team1Points.toFixed(2)}) vs ${matchup.team2} (${team2Points.toFixed(2)}) - Winner: ${winner || 'TIE'}`);
     });
     
     await batch.commit();
     
     // Advance to next week
     await db.collection('league').doc('main').update({
-      currentWeek: currentWeek + 1
+      currentWeek: expectedWeek
     });
     
-    console.log(`\n✓ Advanced to Week ${currentWeek + 1}\n`);
+    console.log(`\n✓ Advanced from Week ${currentWeek} to Week ${expectedWeek}\n`);
     
     return true;
+  } else if (expectedWeek < currentWeek) {
+    console.log(`\n⚠️  Warning: Expected week (${expectedWeek}) is behind current week (${currentWeek})`);
+    console.log('This might indicate an issue with your seasonStartDate\n');
+    return false;
   } else {
-    console.log('\nWeek is still in progress\n');
+    console.log(`\nWeek ${currentWeek} is still in progress\n`);
     return false;
   }
 }
@@ -370,34 +388,37 @@ async function main() {
     console.log('DAILY STATS UPDATE');
     console.log('='.repeat(60));
     
-    // Get games needing stats
+    // First, check if we need to advance the week
+    // This runs BEFORE scraping to ensure we're scraping for the correct week
+    const advanced = await checkAndAdvanceWeek();
+    
+    if (advanced) {
+      console.log('Week was advanced. Stats will be collected for the new week.\n');
+    }
+    
+    // Get games needing stats (for current week, which may have just been updated)
     const { games, week, totalGames } = await getGamesNeedingStats();
     
     if (games.length === 0) {
-      console.log('All games already have stats uploaded\n');
-      await checkAndAdvanceWeek();
-      return;
+      console.log('No games scheduled for this week yet, or all stats already collected\n');
+    } else {
+      console.log(`Found ${games.length} games to scrape for Week ${week}`);
+      console.log('Game IDs:', games.join(', '), '\n');
+      
+      // Create and run R scrape script
+      createScrapeScript(games, week);
+      
+      console.log('Running R scrape script...\n');
+      execSync('Rscript scrape_daily.R', { stdio: 'inherit' });
+      
+      // Upload stats
+      const uploaded = await uploadStats();
+      
+      if (uploaded) {
+        // Update matchup scores for CURRENT week
+        await updateMatchupScores(week);
+      }
     }
-    
-    console.log(`Found ${games.length} games needing stats out of ${totalGames} total`);
-    console.log('Game IDs:', games.join(', '), '\n');
-    
-    // Create and run R scrape script
-    createScrapeScript(games, week);
-    
-    console.log('Running R scrape script...\n');
-    execSync('Rscript scrape_daily.R', { stdio: 'inherit' });
-    
-    // Upload stats
-    const uploaded = await uploadStats();
-    
-    if (uploaded) {
-      // Update matchup scores
-      await updateMatchupScores(week);
-    }
-    
-    // Check if week is complete
-    await checkAndAdvanceWeek();
     
     console.log('='.repeat(60));
     console.log('DAILY UPDATE COMPLETE');

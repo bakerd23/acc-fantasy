@@ -195,3 +195,36 @@
   color: #666;
   font-weight: 500;
 }
+
+.drop-col {
+  width: 40px;
+  text-align: center;
+}
+
+.drop-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.drop-btn:hover {
+  background: #c82333;
+}
+
+.drop-warning {
+  color: #856404;
+  background: #fff3cd;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 10px 0;
+}

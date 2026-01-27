@@ -177,6 +177,7 @@ export default function Matchups() {
           pw[pid].tpm += getStatValue('threePointsMade', 'threePointFieldGoalsMade');
           pw[pid].fgMade += getStatValue('fieldGoalsMade', 'fieldGoalsMade');
           pw[pid].fgAttempted += getStatValue('fieldGoalsAttempted', 'fieldGoalsAttempted');
+        });
 
         // Calculate FG% after accumulation
         Object.keys(pw).forEach(pid => {

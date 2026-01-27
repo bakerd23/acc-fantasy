@@ -216,6 +216,11 @@ export default function Standings() {
                       )}
                     </>
                   )}
+                  {txn.type === 'drop' && (
+                    <>
+                      dropped <strong>{txn.playerDropped}</strong>
+                    </>
+                  )}
                 </span>
               </div>
             ))}

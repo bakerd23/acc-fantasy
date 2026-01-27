@@ -7,6 +7,7 @@ import {
   query,
   where,
   updateDoc,
+  addDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import "./teams.css";
@@ -28,6 +29,12 @@ export default function Teams() {
   const [editingTeam, setEditingTeam] = useState(null);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  // Drop player modal state
+  const [showDropModal, setShowDropModal] = useState(false);
+  const [dropTeamId, setDropTeamId] = useState(null);
+  const [dropSlot, setDropSlot] = useState(null);
+  const [dropPlayerId, setDropPlayerId] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -90,6 +97,7 @@ export default function Teams() {
           const v = d.data() || {};
           const pid = String(v.playerId || d.id);
           pmap[pid] = {
+            id: d.id, // Store Firestore doc ID for updates
             playerId: pid,
             name: v.name || pid,
             position: v.position || "?",
@@ -222,6 +230,99 @@ export default function Teams() {
     } else {
       setEditingTeam(teamId);
       setSelectedPlayer({ slot, playerId });
+    }
+  };
+
+  const handleDropClick = (e, teamId, slot, playerId) => {
+    e.stopPropagation(); // Prevent row click from firing
+    
+    if (!canEdit) return;
+    if (hasPlayedThisWeek(playerId)) {
+      alert("Cannot drop a player who has already played this week.");
+      return;
+    }
+
+    setDropTeamId(teamId);
+    setDropSlot(slot);
+    setDropPlayerId(playerId);
+    setShowDropModal(true);
+  };
+
+  const confirmDrop = async () => {
+    if (!dropTeamId || !dropSlot || !dropPlayerId) return;
+
+    setSaving(true);
+
+    try {
+      const team = teams.find((t) => t.teamId === dropTeamId);
+      if (!team) {
+        alert("Team not found.");
+        return;
+      }
+
+      const player = playersById[dropPlayerId];
+      if (!player) {
+        alert("Player not found.");
+        return;
+      }
+
+      // Update team roster - remove player from slot
+      const newRoster = { ...team.roster };
+      delete newRoster[dropSlot];
+
+      await updateDoc(doc(db, "teams", team.id), {
+        roster: newRoster,
+      });
+
+      // Update player status
+      await updateDoc(doc(db, "players", player.id), {
+        status: "free_agent",
+        fantasyTeam: null,
+        rosterSpot: null,
+      });
+
+      // Log transaction
+      await addDoc(collection(db, "transactions"), {
+        type: "drop",
+        teamId: dropTeamId,
+        teamName: team.name,
+        playerAdded: null,
+        playerAddedId: null,
+        playerDropped: player.name,
+        playerDroppedId: dropPlayerId,
+        timestamp: new Date(),
+      });
+
+      // Update local state
+      setTeams((prev) =>
+        prev.map((t) =>
+          t.teamId === dropTeamId ? { ...t, roster: newRoster } : t
+        )
+      );
+
+      // Update playersById to reflect new status
+      setPlayersById((prev) => ({
+        ...prev,
+        [dropPlayerId]: {
+          ...prev[dropPlayerId],
+          status: "free_agent",
+          fantasyTeam: null,
+        },
+      }));
+
+      // Close modal
+      setShowDropModal(false);
+      setDropTeamId(null);
+      setDropSlot(null);
+      setDropPlayerId(null);
+
+      // Clear any active editing
+      setEditingTeam(null);
+      setSelectedPlayer(null);
+    } catch (e) {
+      alert("Error dropping player: " + e.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -425,6 +526,7 @@ export default function Teams() {
                       <th>FOUL</th>
                       <th>FPTS</th>
                       <th>GP</th>
+                      {canEdit && <th className="drop-col"></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -488,6 +590,19 @@ export default function Teams() {
                             {stats ? formatStat(stats.totalFantasyPoints) : "—"}
                           </td>
                           <td>{stats ? stats.gamesPlayed : "0"}</td>
+                          {canEdit && (
+                            <td className="drop-col">
+                              {player && !hasPlayed && (
+                                <button
+                                  className="drop-btn"
+                                  onClick={(e) => handleDropClick(e, team.teamId, slot, pid)}
+                                  title="Drop player"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -497,6 +612,40 @@ export default function Teams() {
             </div>
           );
         })}
+
+      {/* Drop Player Confirmation Modal */}
+      {showDropModal && (
+        <div className="modal-overlay" onClick={() => setShowDropModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Drop Player</h3>
+            <p>
+              Are you sure you want to drop{" "}
+              <strong>{playersById[dropPlayerId]?.name}</strong>?
+            </p>
+            <p className="drop-warning">
+              This player will become a free agent and can be picked up by any team.
+            </p>
+
+            <div className="modal-actions">
+              <button
+                className="btn-cancel"
+                onClick={() => setShowDropModal(false)}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-confirm"
+                onClick={confirmDrop}
+                disabled={saving}
+                style={{ backgroundColor: "#dc3545" }}
+              >
+                {saving ? "Dropping..." : "Drop Player"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 name: Daily Stats Update
 
 on:
-  schedule:
   workflow_dispatch: # Allows manual trigger
 
 jobs:
